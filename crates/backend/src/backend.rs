@@ -31,7 +31,7 @@ pub fn start(send: FrontendHandle, self_handle: BackendHandle, recv: BackendRece
 
     let http_client = reqwest::ClientBuilder::new()
         // .connect_timeout(Duration::from_secs(5))
-        .redirect(Policy::none())
+        .redirect(Policy::limited(10))
         .use_rustls_tls()
         .user_agent("PandoraLauncher/0.1.0 (https://github.com/Moulberry/PandoraLauncher)")
         .build()
