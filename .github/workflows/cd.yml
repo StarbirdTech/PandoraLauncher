@@ -69,7 +69,7 @@ jobs:
       - name: Build .app bundle (macOS)
         if: matrix.os == 'macos-14'
         run: |
-          cargo bundle --release --target ${{ matrix.target }}
+          cargo bundle --release --target ${{ matrix.target }} -p pandora_launcher
 
           # Get version from tag
           VERSION=${GITHUB_REF#refs/tags/v}
