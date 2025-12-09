@@ -134,36 +134,41 @@ jobs:
 
           mkdir -p Casks
 
-          # Write cask file (no indentation in heredoc)
-          cat > Casks/pandora-launcher.rb << EOF
-cask "pandora-launcher" do
-  version "$VERSION"
-  sha256 "$SHA256"
+          # Write cask file
+          cat > Casks/pandora-launcher.rb << 'CASKEOF'
+          cask "pandora-launcher" do
+            version "VERSION_PLACEHOLDER"
+            sha256 "SHA256_PLACEHOLDER"
 
-  url "https://github.com/StarbirdTech/PandoraLauncher/releases/download/v#{version}/PandoraLauncher-macos.zip"
-  name "Pandora Launcher"
-  desc "Minecraft launcher with mod deduplication and secure credential management"
-  homepage "https://github.com/Moulberry/PandoraLauncher"
+            url "https://github.com/StarbirdTech/PandoraLauncher/releases/download/v#{version}/PandoraLauncher-macos.zip"
+            name "Pandora Launcher"
+            desc "Minecraft launcher with mod deduplication and secure credential management"
+            homepage "https://github.com/Moulberry/PandoraLauncher"
 
-  livecheck do
-    url :url
-    strategy :github_latest
-  end
+            livecheck do
+              url :url
+              strategy :github_latest
+            end
 
-  app "Pandora Launcher.app"
+            app "Pandora Launcher.app"
 
-  postflight do
-    system_command "xattr", args: ["-cr", "#{appdir}/Pandora Launcher.app"]
-    system_command "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
-                   args: ["-f", "#{appdir}/Pandora Launcher.app"]
-  end
+            postflight do
+              system_command "xattr", args: ["-cr", "#{appdir}/Pandora Launcher.app"]
+              system_command "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+                             args: ["-f", "#{appdir}/Pandora Launcher.app"]
+            end
 
-  zap trash: [
-    "~/Library/Application Support/PandoraLauncher",
-    "~/Library/Caches/PandoraLauncher",
-  ]
-end
-EOF
+            zap trash: [
+              "~/Library/Application Support/PandoraLauncher",
+              "~/Library/Caches/PandoraLauncher",
+            ]
+          end
+          CASKEOF
+
+          # Remove leading whitespace and substitute placeholders
+          sed -i 's/^          //' Casks/pandora-launcher.rb
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/" Casks/pandora-launcher.rb
+          sed -i "s/SHA256_PLACEHOLDER/$SHA256/" Casks/pandora-launcher.rb
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
