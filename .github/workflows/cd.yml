@@ -8,22 +8,33 @@ on:
     tags:
       - "v*"
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   release:
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
-        platform:
+        include:
           - os_name: Linux-x86_64
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binext: ""
+            artifact_name: pandora_launcher
+            artifact_path: target/x86_64-unknown-linux-gnu/release/pandora_launcher
           - os_name: Windows-x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
-            binext: .exe
+            artifact_name: pandora_launcher.exe
+            artifact_path: target/x86_64-pc-windows-msvc/release/pandora_launcher.exe
+          - os_name: macOS-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+            artifact_name: PandoraLauncher-macos.zip
+            artifact_path: PandoraLauncher-macos.zip
 
-    runs-on: ${{ matrix.platform.os }}
+    runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,26 +42,131 @@ jobs:
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform.target }}
+          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install needed packages on Linux
+      - name: Install packages (Linux)
+        if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update --yes && sudo apt-get install --yes libssl-dev libdbus-1-dev libx11-xcb1 libxkbcommon-x11-dev pkg-config
-        if: contains(matrix.platform.os, 'ubuntu')
 
       - name: Install mold linker
+        if: matrix.os != 'macos-14'
         uses: rui314/setup-mold@v1
 
-      - name: Run build command
-        run: cargo build --release --target ${{ matrix.platform.target }}
+      - name: Install cargo-bundle (macOS)
+        if: matrix.os == 'macos-14'
+        run: cargo install cargo-bundle
 
-      - name: Strip debug information
-        run: strip target/${{ matrix.platform.target }}/release/pandora_launcher${{ matrix.platform.binext }}
+      - name: Build (Linux/Windows)
+        if: matrix.os != 'macos-14'
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Create release
+      - name: Strip binary (Linux/Windows)
+        if: matrix.os != 'macos-14'
+        run: strip target/${{ matrix.target }}/release/pandora_launcher${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
+      - name: Build .app bundle (macOS)
+        if: matrix.os == 'macos-14'
+        run: |
+          cargo bundle --release --target ${{ matrix.target }}
+
+          # Get version from tag
+          VERSION=${GITHUB_REF#refs/tags/v}
+
+          # Update Info.plist with release version
+          APP_PATH="target/${{ matrix.target }}/release/bundle/osx/Pandora Launcher.app"
+          PLIST="$APP_PATH/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST"
+
+          # Remove quarantine attribute
+          xattr -cr "$APP_PATH"
+
+          # Create ZIP in workspace root
+          cd "target/${{ matrix.target }}/release/bundle/osx"
+          zip -r "$GITHUB_WORKSPACE/PandoraLauncher-macos.zip" "Pandora Launcher.app"
+
+      - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/${{ matrix.platform.target }}/release/pandora_launcher${{ matrix.platform.binext }}
+          files: ${{ matrix.artifact_path }}
+          body: |
+            ## Downloads
+            - **Linux**: `pandora_launcher` (x86_64)
+            - **Windows**: `pandora_launcher.exe` (x86_64)
+            - **macOS**: `PandoraLauncher-macos.zip` (Apple Silicon)
+
+            ## macOS Install via Homebrew
+            ```bash
+            brew tap starbirdtech/pandora
+            brew install --cask pandora-launcher
+            ```
+
+            Commit: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew Cask
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          # Skip if token not configured
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set, skipping cask update"
+            exit 0
+          fi
+
+          VERSION=${GITHUB_REF#refs/tags/v}
+
+          # Wait for release assets to be available
+          sleep 10
+
+          # Get SHA256 from release asset
+          SHA256=$(curl -sL "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/PandoraLauncher-macos.zip" | shasum -a 256 | awk '{print $1}')
+
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/StarbirdTech/homebrew-pandora.git tap
+          cd tap
+
+          mkdir -p Casks
+
+          # Write cask file (no indentation in heredoc)
+          cat > Casks/pandora-launcher.rb << EOF
+cask "pandora-launcher" do
+  version "$VERSION"
+  sha256 "$SHA256"
+
+  url "https://github.com/StarbirdTech/PandoraLauncher/releases/download/v#{version}/PandoraLauncher-macos.zip"
+  name "Pandora Launcher"
+  desc "Minecraft launcher with mod deduplication and secure credential management"
+  homepage "https://github.com/Moulberry/PandoraLauncher"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  app "Pandora Launcher.app"
+
+  postflight do
+    system_command "xattr", args: ["-cr", "#{appdir}/Pandora Launcher.app"]
+    system_command "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+                   args: ["-f", "#{appdir}/Pandora Launcher.app"]
+  end
+
+  zap trash: [
+    "~/Library/Application Support/PandoraLauncher",
+    "~/Library/Caches/PandoraLauncher",
+  ]
+end
+EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/pandora-launcher.rb
+          git commit -m "Update pandora-launcher to v${VERSION}" || echo "No changes"
+          git push

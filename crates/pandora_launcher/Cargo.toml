@@ -11,3 +11,12 @@ tokio.workspace = true
 bridge.workspace = true
 backtrace.workspace = true
 parking_lot.workspace = true
+
+[package.metadata.bundle]
+name = "Pandora Launcher"
+identifier = "com.moulberry.pandora-launcher"
+icon = ["../../assets/icons/AppIcon.icns"]
+copyright = "Copyright (c) 2025 Moulberry"
+category = "public.app-category.games"
+short_description = "Minecraft launcher with mod deduplication"
+osx_minimum_system_version = "11.0"
