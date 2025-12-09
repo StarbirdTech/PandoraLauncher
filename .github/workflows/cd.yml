@@ -153,8 +153,10 @@ jobs:
             app "Pandora Launcher.app"
 
             postflight do
-              system_command "xattr", args: ["-cr", "#{appdir}/Pandora Launcher.app"]
-              system_command "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+              system_command "xattr",
+                             args: ["-cr", "#{appdir}/Pandora Launcher.app"]
+              system_command "/System/Library/Frameworks/CoreServices.framework/" \
+                             "Frameworks/LaunchServices.framework/Support/lsregister",
                              args: ["-f", "#{appdir}/Pandora Launcher.app"]
             end
 
